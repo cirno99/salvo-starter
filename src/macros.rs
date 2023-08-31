@@ -105,24 +105,11 @@ macro_rules! current_user {
 }
 
 #[macro_export]
-macro_rules! parse_posted_data {
-    ($req:expr, $res:expr, $model:ty) => {{
-        match $req.parse_json::<$model>().await {
-            Ok(pdata) => pdata,
-            Err(e) => {
-                tracing::error!(error = ?e, "posted data parse error");
-                return $crate::context::render_parse_data_error_json($res);
-            }
-        }
-    }};
-}
-
-#[macro_export]
 macro_rules! show_record {
     ($req:expr, $depot:expr, $res:expr, $model:ty, $edb:path, $qid:expr, $conn:expr) => {
         // println!("===open db conn in show_record");
         let record = get_record_by_param!($req, $res, $model, $edb, $conn);
-        let cuser = current_user!($depot, $res);
+        let _cuser = current_user!($depot, $res);
         $res.render(Json(record));
     };
     ($req:expr, $depot:expr, $res:expr, $model:ty, $edb:path, $conn:expr) => {
@@ -133,7 +120,9 @@ macro_rules! show_record {
         // println!("===open db conn in show_record2");
         let record = get_record_by_param!($req, $res, $model, $edb, $conn);
         let cuser = current_user!($depot, $res);
-        let dep = dep_edb::table.find(record.$cfield).get_result::<$dep_model>($conn);
+        let dep = dep_edb::table
+            .find(record.$cfield)
+            .get_result::<$dep_model>($conn);
         if dep.is_err() {
             return $crate::context::render_not_found_json($res);
         }
@@ -178,7 +167,7 @@ macro_rules! list_records {
 #[macro_export]
 macro_rules! delete_record {
     ($req:expr, $depot:expr, $res:expr, $edb:path, $model:ty, $del:expr, $conn:expr) => {{
-        let cuser = current_user!($depot, $res);
+        let _cuser = current_user!($depot, $res);
         let record = get_record_by_param!($req, $res, $model, $edb, $conn);
         $del(record.id, $conn)?;
         $crate::context::render_done_json($res).ok();
@@ -186,13 +175,15 @@ macro_rules! delete_record {
     }};
     ($req:expr, $depot:expr, $res:expr, $edb:path, $model:ty, $del:expr, $dep_edb:path, $dep_model:ty, $cfield:ident, $action:expr, $conn:expr) => {{
         use $dep_edb as dep_edb;
-        let cuser = current_user!($depot, $res);
+        let _cuser = current_user!($depot, $res);
         let record = get_record_by_param!($req, $res, $model, $edb, $conn);
-        let dep = dep_edb::table.find(record.$cfield).get_result::<$dep_model>($conn);
+        let dep = dep_edb::table
+            .find(record.$cfield)
+            .get_result::<$dep_model>($conn);
         if dep.is_err() {
             return $crate::context::render_not_found_json($res);
         }
-        let dep = dep.unwrap();
+        let _dep = dep.unwrap();
         $del(record.id, $conn)?;
         $crate::context::render_done_json($res).ok();
         record
@@ -203,11 +194,13 @@ macro_rules! bulk_delete_records {
     ($req:expr, $depot:expr, $res:expr, $edb:path, $model:ty, $del:expr, $conn:expr) => {{
         use $edb as edb;
         let ids = $crate::context::parse_ids_from_request($req, "id", "ids").await;
-        let cuser = current_user!($depot, $res);
+        let _cuser = current_user!($depot, $res);
 
-        let records = edb::table.filter(edb::id.eq_any(&ids)).get_results::<$model>($conn)?;
+        let records = edb::table
+            .filter(edb::id.eq_any(&ids))
+            .get_results::<$model>($conn)?;
         let mut done_ids = vec![];
-        let mut deined_ids = vec![];
+        let deined_ids = vec![];
         let mut nerr_ids = vec![];
         for record in &records {
             if $del(record.id, $conn).is_err() {
@@ -219,7 +212,12 @@ macro_rules! bulk_delete_records {
         render_bulk_action_json!(
             $res,
             done_ids,
-            (deined_ids, "denied_access", "denied access", "denied access"),
+            (
+                deined_ids,
+                "denied_access",
+                "denied access",
+                "denied access"
+            ),
             (nerr_ids, "unknown_error", "unknown error", "unknown error")
         );
         records
@@ -228,20 +226,24 @@ macro_rules! bulk_delete_records {
         use $dep_edb as dep_edb;
         use $edb as edb;
         let ids = $crate::context::parse_ids_from_request($req, "id", "ids").await;
-        let cuser = current_user!($depot, $res);
+        let _cuser = current_user!($depot, $res);
 
-        let records = edb::table.filter(edb::id.eq_any(&ids)).get_results::<$model>($conn);
+        let records = edb::table
+            .filter(edb::id.eq_any(&ids))
+            .get_results::<$model>($conn);
         if records.is_err() {
             return $crate::context::render_db_error_json($res);
         }
         let records = records.unwrap();
         let mut deps: HashMap<i64, $dep_model> = std::collections::HashMap::new();
         let mut done_ids = vec![];
-        let mut deined_ids = vec![];
+        let deined_ids = vec![];
         let mut nerr_ids = vec![];
         for record in &records {
             if deps.get(&record.$cfield).is_none() {
-                let dep = dep_edb::table.find(record.$cfield).get_result::<$dep_model>($conn);
+                let dep = dep_edb::table
+                    .find(record.$cfield)
+                    .get_result::<$dep_model>($conn);
                 if dep.is_err() {
                     nerr_ids.push(record.id);
                     continue;
@@ -257,7 +259,12 @@ macro_rules! bulk_delete_records {
         render_bulk_action_json!(
             $res,
             done_ids,
-            (deined_ids, "denied_access", "denied access", "denied access"),
+            (
+                deined_ids,
+                "denied_access",
+                "denied access",
+                "denied access"
+            ),
             (nerr_ids, "unknown_error", "unknown error", "unknown error")
         );
         records
@@ -414,8 +421,8 @@ macro_rules! check_ident_name_preserved {
     ($name:expr) => {
         if $crate::is_ident_name_preserved($name) {
             return Err(salvo::http::StatusError::conflict()
-                .with_summary("name preserved")
-                .with_detail("this name is preserved")
+                .brief("name preserved")
+                .detail("this name is preserved")
                 .into());
         }
     };
@@ -427,14 +434,14 @@ macro_rules! check_ident_name_other_taken {
         match $crate::utils::validator::is_ident_name_other_taken($user_id, $ident_name, $conn) {
             Ok(true) => {
                 return Err(salvo::http::StatusError::conflict()
-                    .with_summary("username conflict")
-                    .with_detail("this user name is already taken, please try another.")
+                    .brief("username conflict")
+                    .detail("this user name is already taken, please try another.")
                     .into())
             }
             Err(_) => {
                 return Err(salvo::http::StatusError::internal_server_error()
-                    .with_summary("db error")
-                    .with_detail("db error when check username conflict")
+                    .brief("db error")
+                    .detail("db error when check username conflict")
                     .into())
             }
             _ => {}
@@ -447,14 +454,14 @@ macro_rules! check_email_other_taken {
         match $crate::utils::validator::is_email_other_taken($user_id, $email, $conn) {
             Ok(true) => {
                 return Err(salvo::http::StatusError::conflict()
-                    .with_summary("email conflict")
-                    .with_detail("This email is already taken, please try another.")
+                    .brief("email conflict")
+                    .detail("This email is already taken, please try another.")
                     .into())
             }
             Err(_) => {
                 return Err(salvo::http::StatusError::internal_server_error()
-                    .with_summary("db error")
-                    .with_detail("db error when check email conflict")
+                    .brief("db error")
+                    .detail("db error when check email conflict")
                     .into())
             }
             _ => {}

@@ -1,18 +1,18 @@
 use std::env;
 use std::hash::Hash;
-use std::str::FromStr;
-use strum_macros::{Display, EnumString};
+
+
 
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
 use jsonwebtoken as jwt;
 use jsonwebtoken::EncodingKey;
 use once_cell::sync::Lazy;
-use salvo::http::{StatusCode, StatusError};
+use salvo::http::{StatusCode};
 use serde::Serialize;
-use serde_json::Value;
 
-use crate::db::{self, lower};
+
+use crate::db::{lower};
 use crate::models::*;
 use crate::schema::*;
 use crate::JwtClaims;
@@ -27,14 +27,16 @@ bitflags! {
     }
 }
 
-static LETTER_BYTES: Lazy<Vec<u8>> = Lazy::new(|| b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".to_vec());
+static LETTER_BYTES: Lazy<Vec<u8>> =
+    Lazy::new(|| b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".to_vec());
 static DIGIT_BYTES: Lazy<Vec<u8>> = Lazy::new(|| b"0123456789".to_vec());
 static CHAR_BYTES: Lazy<Vec<u8>> =
     Lazy::new(|| b"0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ".to_vec());
 static URL_SAFE_CHAR_BYTES: Lazy<Vec<u8>> =
     Lazy::new(|| b"0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_-".to_vec());
-static PASSWORD_SAFE_CHAR_BYTES: Lazy<Vec<u8>> =
-    Lazy::new(|| b"0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_-~*&^%$#@<>/\\[]{}+=".to_vec());
+static PASSWORD_SAFE_CHAR_BYTES: Lazy<Vec<u8>> = Lazy::new(|| {
+    b"0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_-~*&^%$#@<>/\\[]{}+=".to_vec()
+});
 static PRESERVED_IDENT_NAMES: Lazy<Vec<&'static str>> = Lazy::new(|| {
     vec![
         "admin",
@@ -72,7 +74,6 @@ static PRESERVED_IDENT_NAMES: Lazy<Vec<&'static str>> = Lazy::new(|| {
     ]
 });
 
-
 pub fn secret_key() -> String {
     env::var("SECRET_KEY").expect("SECRET_KEY must be set")
 }
@@ -95,7 +96,6 @@ pub fn cookie_domain() -> String {
 pub fn is_ident_name_preserved(name: &str) -> bool {
     PRESERVED_IDENT_NAMES.contains(&name)
 }
-
 
 #[derive(Serialize, Debug)]
 pub struct StatusInfo {
@@ -191,7 +191,7 @@ pub fn generate_ident_name(conn: &mut PgConnection) -> AppResult<String> {
     while diesel_exists!(
         users::table.filter(lower(users::ident_name).eq(ident_name.to_lowercase())),
         conn
-    )  {
+    ) {
         ident_name = generate_token(16);
     }
     Ok(ident_name)
@@ -217,7 +217,11 @@ pub fn create_jwt_token(user: &User, expire: &DateTime<Utc>) -> jwt::errors::Res
     jwt::encode(
         &jwt::Header::default(),
         &claim,
-        &EncodingKey::from_secret(env::var("SECRET_KEY").expect("SECRET_KEY must be set").as_ref()),
+        &EncodingKey::from_secret(
+            env::var("SECRET_KEY")
+                .expect("SECRET_KEY must be set")
+                .as_ref(),
+        ),
     )
 }
 
@@ -274,22 +278,4 @@ pub fn get_email_domain(email: &str) -> &str {
 }
 pub fn safe_url_path(raw: &str) -> String {
     raw.replace('\\', "/").replace("../", "/")
-}
-
-pub fn bad_request_error(summary: String, detail: Option<String>) -> StatusError {
-    StatusError {
-        code: StatusCode::BAD_REQUEST,
-        name: "Bad Request".into(),
-        detail,
-        summary: Some(summary),
-    }
-}
-
-pub fn server_internal_error(summary: String, detail: Option<String>) -> StatusError {
-    StatusError {
-        code: StatusCode::INTERNAL_SERVER_ERROR,
-        name: "Server Internal Error".into(),
-        detail,
-        summary: Some(summary),
-    }
 }

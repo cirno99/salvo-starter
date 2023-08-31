@@ -25,7 +25,7 @@ where
     send_email(recipients, subject, HANDLEBARS.render(tpl_name, &data)?).await
 }
 
-pub async fn send_email(recipients: Vec<String>, subject: &str, body: String) -> AppResult<()> {
+pub async fn send_email(_recipients: Vec<String>, _subject: &str, _body: String) -> AppResult<()> {
     // crate::aws::ses::send_email(recipients, subject, body).await
     Ok(())
 }

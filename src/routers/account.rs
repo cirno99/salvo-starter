@@ -8,7 +8,7 @@ use crate::db::{self, lower};
 use crate::models::*;
 use crate::schema::*;
 use crate::utils::{password, validator};
-use crate::{context, AppResult, get_email_domain};
+use crate::{context, get_email_domain, AppResult};
 pub mod access_token;
 pub mod notification;
 
@@ -26,11 +26,13 @@ pub fn authed_root(path: impl Into<String>) -> Router {
                 .patch(update_password),
         )
         .push(
-            Router::with_path("access_tokens").get(access_token::list).push(
-                Router::with_path(r"<id:/\d+/>")
-                    .patch(access_token::update)
-                    .delete(access_token::delete),
-            ),
+            Router::with_path("access_tokens")
+                .get(access_token::list)
+                .push(
+                    Router::with_path(r"<id:/\d+/>")
+                        .patch(access_token::update)
+                        .delete(access_token::delete),
+                ),
         )
         .push(
             Router::with_path("notifications")
@@ -68,7 +70,7 @@ pub async fn find(req: &mut Request, _depot: &mut Depot, res: &mut Response) -> 
         #[serde(default)]
         email: String,
     }
-    let mut pdata = parse_posted_data!(req, res, PostedData);
+    let mut pdata = req.parse_json::<PostedData>().await?;
     if pdata.ident_name.is_empty() && pdata.email.is_empty() {
         return context::render_parse_param_error_json(res);
     }
@@ -132,7 +134,7 @@ pub async fn find(req: &mut Request, _depot: &mut Depot, res: &mut Response) -> 
             "user is not verified",
             "user is not verified",
         )
-    } else if  user.is_disabled {
+    } else if user.is_disabled {
         context::render_status_json(
             res,
             StatusCode::BAD_REQUEST,
@@ -145,14 +147,18 @@ pub async fn find(req: &mut Request, _depot: &mut Depot, res: &mut Response) -> 
             id: email.id,
             value: crate::mask_email(email.value),
         });
-       
+
         res.render(Json(ResultData { user_id, email }));
         Ok(())
     }
 }
 
 #[handler]
-pub async fn complete_registration(req: &mut Request, _depot: &mut Depot, res: &mut Response) -> AppResult<()> {
+pub async fn complete_registration(
+    req: &mut Request,
+    _depot: &mut Depot,
+    res: &mut Response,
+) -> AppResult<()> {
     #[derive(Deserialize, Debug)]
     struct PostedData {
         #[serde(default)]
@@ -166,20 +172,29 @@ pub async fn complete_registration(req: &mut Request, _depot: &mut Depot, res: &
     }
     let user_id: i64 = req.query("user_id").unwrap_or(0);
     if user_id <= 0 {
-        return context::render_parse_query_error_json_with_detail(res, "user_id is not provide or error format");
+        return context::render_parse_query_error_json_with_detail(
+            res,
+            "user_id is not provide or error format",
+        );
     }
     let code_value: String = req.query("security_code").unwrap_or_default();
     if code_value.is_empty() {
-        return context::render_parse_query_error_json_with_detail(res, "security_code is not provide or empty");
+        return context::render_parse_query_error_json_with_detail(
+            res,
+            "security_code is not provide or empty",
+        );
     }
-    let pdata = parse_posted_data!(req, res, PostedData);
+    let pdata = req.parse_json::<PostedData>().await?;
     let mut conn = db::connect()?;
     let code = security_codes::table
         .filter(security_codes::user_id.eq(user_id))
         .filter(security_codes::value.eq(code_value))
         .first::<SecurityCode>(&mut conn);
     if code.is_err() {
-        return context::render_not_found_json_with_detail(res, "your verification code is not found");
+        return context::render_not_found_json_with_detail(
+            res,
+            "your verification code is not found",
+        );
     }
     let code = code.unwrap();
     if code.consumed_at.is_some() {
@@ -205,7 +220,10 @@ pub async fn complete_registration(req: &mut Request, _depot: &mut Depot, res: &
     }
     let pwd = password::hash(&pdata.password);
     if pwd.is_err() {
-        return context::render_internal_server_error_json_with_detail(res, "password hash has error");
+        return context::render_internal_server_error_json_with_detail(
+            res,
+            "password hash has error",
+        );
     }
     let pwd = pwd.unwrap();
     if pdata.ident_name.is_empty() {
@@ -253,15 +271,21 @@ pub async fn complete_registration(req: &mut Request, _depot: &mut Depot, res: &
 }
 
 #[handler]
-pub async fn send_security_code(req: &mut Request, _depot: &mut Depot, res: &mut Response) -> AppResult<()> {
+pub async fn send_security_code(
+    req: &mut Request,
+    _depot: &mut Depot,
+    res: &mut Response,
+) -> AppResult<()> {
     #[derive(Deserialize, Debug)]
     struct PostedData {
         user_id: i64,
         email_id: Option<i64>,
     }
-    let pdata = parse_posted_data!(req, res, PostedData);
+    let pdata = req.parse_json::<PostedData>().await?;
     let mut conn = db::connect()?;
-    let cuser = users::table.find(pdata.user_id).get_result::<User>(&mut conn)?;
+    let cuser = users::table
+        .find(pdata.user_id)
+        .get_result::<User>(&mut conn)?;
     if let Some(email_id) = pdata.email_id {
         let email = emails::table
             .filter(emails::id.eq(email_id))
@@ -270,7 +294,10 @@ pub async fn send_security_code(req: &mut Request, _depot: &mut Depot, res: &mut
         cuser.send_security_code_email(&email.value).await?;
         context::render_done_json_with_detail(
             res,
-            format!("verification code sent to {}", crate::mask_email(&email.value)),
+            format!(
+                "verification code sent to {}",
+                crate::mask_email(&email.value)
+            ),
         )
     } else {
         context::render_parse_data_error_json_with_detail(res, "posted data is invalid")
@@ -278,7 +305,11 @@ pub async fn send_security_code(req: &mut Request, _depot: &mut Depot, res: &mut
 }
 
 #[handler]
-pub async fn test_security_code(req: &mut Request, _depot: &mut Depot, res: &mut Response) -> AppResult<()> {
+pub async fn test_security_code(
+    req: &mut Request,
+    _depot: &mut Depot,
+    res: &mut Response,
+) -> AppResult<()> {
     #[derive(Deserialize, Debug)]
     struct PostedData {
         #[serde(default)]
@@ -291,7 +322,7 @@ pub async fn test_security_code(req: &mut Request, _depot: &mut Depot, res: &mut
         is_valid: bool,
         message: &'a str,
     }
-    let pdata = parse_posted_data!(req, res, PostedData);
+    let pdata = req.parse_json::<PostedData>().await?;
     if pdata.user_id <= 0 || pdata.security_code.is_empty() {
         return context::render_parse_data_error_json(res);
     }
@@ -310,7 +341,10 @@ pub async fn test_security_code(req: &mut Request, _depot: &mut Depot, res: &mut
     let code = code.unwrap();
 
     if code.expired_at < Utc::now() {
-        return context::render_parse_data_error_json_with_detail(res, "Your verification code has expired. ");
+        return context::render_parse_data_error_json_with_detail(
+            res,
+            "Your verification code has expired. ",
+        );
     }
 
     match code.consumed_at {
@@ -331,7 +365,11 @@ pub async fn test_security_code(req: &mut Request, _depot: &mut Depot, res: &mut
 }
 
 #[handler]
-pub async fn reset_password(req: &mut Request, _depot: &mut Depot, res: &mut Response) -> AppResult<()> {
+pub async fn reset_password(
+    req: &mut Request,
+    _depot: &mut Depot,
+    res: &mut Response,
+) -> AppResult<()> {
     #[derive(Deserialize, Debug)]
     struct PostedData {
         #[serde(default)]
@@ -341,9 +379,12 @@ pub async fn reset_password(req: &mut Request, _depot: &mut Depot, res: &mut Res
         #[serde(default)]
         password: String,
     }
-    let pdata = parse_posted_data!(req, res, PostedData);
+    let pdata = req.parse_json::<PostedData>().await?;
     if pdata.security_code.is_empty() {
-        return context::render_parse_data_error_json_with_detail(res, "verification code is not provide or empty");
+        return context::render_parse_data_error_json_with_detail(
+            res,
+            "verification code is not provide or empty",
+        );
     }
     if let Err(msg) = validator::validate_password(&pdata.password) {
         return context::render_parse_data_error_json_with_detail(res, &msg);
@@ -367,13 +408,21 @@ pub async fn reset_password(req: &mut Request, _depot: &mut Depot, res: &mut Res
         );
     }
     if code.consumed_at.is_some() {
-        return context::render_parse_data_error_json_with_detail(res, "This verification code has already been used.");
+        return context::render_parse_data_error_json_with_detail(
+            res,
+            "This verification code has already been used.",
+        );
     }
     if code.expired_at < Utc::now() {
-        return context::render_parse_data_error_json_with_detail(res, "Your verification code has expired. ");
+        return context::render_parse_data_error_json_with_detail(
+            res,
+            "Your verification code has expired. ",
+        );
     }
-    let user = users::table.find(code.user_id).get_result::<User>(&mut conn)?;
-    if  user.is_disabled {
+    let user = users::table
+        .find(code.user_id)
+        .get_result::<User>(&mut conn)?;
+    if user.is_disabled {
         return context::render_status_json(
             res,
             StatusCode::BAD_REQUEST,
@@ -399,7 +448,8 @@ pub async fn reset_password(req: &mut Request, _depot: &mut Depot, res: &mut Res
                         users::updated_at.eq(Utc::now()),
                     ))
                     .execute(conn)?;
-                diesel::delete(access_tokens::table.filter(access_tokens::user_id.eq(user.id))).execute(conn)?;
+                diesel::delete(access_tokens::table.filter(access_tokens::user_id.eq(user.id)))
+                    .execute(conn)?;
                 Ok(())
             }
             Err(_) => Err(StatusError::internal_server_error().into()),
@@ -414,17 +464,24 @@ pub async fn reset_password(req: &mut Request, _depot: &mut Depot, res: &mut Res
 /// to himself, password is required.
 ///
 #[handler]
-pub async fn resend_verification_email(req: &mut Request, _depot: &mut Depot, res: &mut Response) -> AppResult<()> {
+pub async fn resend_verification_email(
+    req: &mut Request,
+    _depot: &mut Depot,
+    res: &mut Response,
+) -> AppResult<()> {
     #[derive(Deserialize, Debug)]
     struct PostedData {
         user_id: i64,
         password: String,
     }
-    let pdata = parse_posted_data!(req, res, PostedData);
+    let pdata = req.parse_json::<PostedData>().await?;
     let mut conn = db::connect()?;
     let user = users::table.find(pdata.user_id).first::<User>(&mut conn)?;
     if !password::compare(&pdata.password, &user.password) {
-        return context::render_bad_request_json_with_detail(res, "Incorrect username/email or password.");
+        return context::render_bad_request_json_with_detail(
+            res,
+            "Incorrect username/email or password.",
+        );
     }
     if user.is_verified {
         return context::render_not_found_json_with_detail(res, "user is verified already");
@@ -450,7 +507,7 @@ pub async fn verify(req: &mut Request, _depot: &mut Depot, res: &mut Response) -
         #[serde(default)]
         token: String,
     }
-    let pdata = parse_posted_data!(req, res, PostedData);
+    let pdata = req.parse_json::<PostedData>().await?;
     let mut conn = db::connect()?;
     let query = security_codes::user_id
         .eq(pdata.user_id)
@@ -462,7 +519,10 @@ pub async fn verify(req: &mut Request, _depot: &mut Depot, res: &mut Response) -
         .filter(query.and(security_codes::email.eq(&pdata.email)))
         .first::<SecurityCode>(&mut conn);
     if code.is_err() {
-        return context::render_parse_data_error_json_with_detail(res, "your verification code is not exist");
+        return context::render_parse_data_error_json_with_detail(
+            res,
+            "your verification code is not exist",
+        );
     }
     let code = code.unwrap();
     if code.consumed_at.is_some() {
@@ -502,7 +562,9 @@ pub async fn verify(req: &mut Request, _depot: &mut Depot, res: &mut Response) -
         email: None,
         token: None,
     };
-    let mut user = users::table.find(pdata.user_id).get_result::<User>(&mut conn)?;
+    let mut user = users::table
+        .find(pdata.user_id)
+        .get_result::<User>(&mut conn)?;
     // let will_send_welcome = !user.is_verified;
     if !pdata.email.is_empty() {
         let email = diesel::update(
@@ -516,7 +578,7 @@ pub async fn verify(req: &mut Request, _depot: &mut Depot, res: &mut Response) -
             emails::updated_at.eq(Utc::now()),
         ))
         .get_result::<Email>(&mut conn)?;
-        
+
         if !user.is_verified {
             user = diesel::update(&user)
                 .set(users::is_verified.eq(true))
@@ -549,7 +611,7 @@ pub async fn create(req: &mut Request, _depot: &mut Depot, res: &mut Response) -
         #[serde(default)]
         email: PostedEmail,
     }
-    let pdata = parse_posted_data!(req, res, PostedData);
+    let pdata = req.parse_json::<PostedData>().await?;
     if !pdata.ident_name.is_empty() {
         if let Err(msg) = validator::validate_ident_name(&pdata.ident_name) {
             return context::render_invalid_data_json_with_detail(res, &msg);
@@ -567,12 +629,15 @@ pub async fn create(req: &mut Request, _depot: &mut Depot, res: &mut Response) -
 
     let pwd = password::hash(&pdata.password);
     if pwd.is_err() {
-        return context::render_internal_server_error_json_with_detail(res, "password hash has error");
+        return context::render_internal_server_error_json_with_detail(
+            res,
+            "password hash has error",
+        );
     }
 
     let pwd = pwd.unwrap();
     let mut conn = db::connect()?;
-    let (user, email) = conn.transaction::<(User, Email), crate::Error, _>(|conn| {
+    let (user, _email) = conn.transaction::<(User, Email), crate::Error, _>(|conn| {
         let ident_name = if pdata.ident_name.is_empty() {
             crate::generate_ident_name(conn)?
         } else {
@@ -583,7 +648,6 @@ pub async fn create(req: &mut Request, _depot: &mut Depot, res: &mut Response) -
         check_email_other_taken!(None, &pdata.email.value, conn);
 
         let new_user = NewUser {
-
             ident_name: &ident_name,
             display_name: &pdata.display_name,
             password: &pwd,
@@ -596,7 +660,6 @@ pub async fn create(req: &mut Request, _depot: &mut Depot, res: &mut Response) -
         let new_user = diesel::insert_into(users::table)
             .values(&new_user)
             .get_result::<User>(conn)?;
-
 
         let new_email = NewEmail {
             user_id: new_user.id,
@@ -619,13 +682,17 @@ pub async fn create(req: &mut Request, _depot: &mut Depot, res: &mut Response) -
 }
 
 #[handler]
-pub async fn update_ident_name(req: &mut Request, depot: &mut Depot, res: &mut Response) -> AppResult<()> {
+pub async fn update_ident_name(
+    req: &mut Request,
+    depot: &mut Depot,
+    res: &mut Response,
+) -> AppResult<()> {
     #[derive(Deserialize, Debug)]
     struct PostedData {
         #[serde(default)]
         ident_name: String,
     }
-    let pdata = parse_posted_data!(req, res, PostedData);
+    let pdata = req.parse_json::<PostedData>().await?;
     if pdata.ident_name.is_empty() {
         return context::render_parse_data_error_json_with_detail(res, "username is not provide");
     }
@@ -650,7 +717,11 @@ pub async fn update_ident_name(req: &mut Request, depot: &mut Depot, res: &mut R
 }
 
 #[handler]
-pub async fn update_password(req: &mut Request, depot: &mut Depot, res: &mut Response) -> AppResult<()> {
+pub async fn update_password(
+    req: &mut Request,
+    depot: &mut Depot,
+    res: &mut Response,
+) -> AppResult<()> {
     #[derive(Deserialize, Debug)]
     struct PostedData {
         #[serde(default)]
@@ -658,7 +729,7 @@ pub async fn update_password(req: &mut Request, depot: &mut Depot, res: &mut Res
         #[serde(default)]
         password: String,
     }
-    let pdata = parse_posted_data!(req, res, PostedData);
+    let pdata = req.parse_json::<PostedData>().await?;
     if pdata.password.is_empty() {
         return context::render_parse_data_error_json_with_detail(res, "password is not provide");
     }
@@ -667,14 +738,23 @@ pub async fn update_password(req: &mut Request, depot: &mut Depot, res: &mut Res
     }
     let cuser = current_user!(depot, res);
     if pdata.current_password.is_empty() {
-        return context::render_parse_data_error_json_with_detail(res, "current password is not provide");
+        return context::render_parse_data_error_json_with_detail(
+            res,
+            "current password is not provide",
+        );
     }
     if !password::compare(&pdata.current_password, &cuser.password) {
-        return context::render_parse_data_error_json_with_detail(res, "current password is not correct");
+        return context::render_parse_data_error_json_with_detail(
+            res,
+            "current password is not correct",
+        );
     }
     let pwd = password::hash(&pdata.password);
     if pwd.is_err() {
-        return context::render_internal_server_error_json_with_detail(res, "password hash has error");
+        return context::render_internal_server_error_json_with_detail(
+            res,
+            "password hash has error",
+        );
     }
     let mut conn = db::connect()?;
     diesel::update(cuser)
@@ -686,9 +766,13 @@ pub async fn update_password(req: &mut Request, depot: &mut Depot, res: &mut Res
         .execute(&mut conn)?;
     let exp = Utc::now() + Duration::days(14);
     let jwt_token = crate::create_jwt_token(cuser, &exp);
-    diesel::delete(access_tokens::table.filter(access_tokens::user_id.eq(cuser.id))).execute(&mut conn)?;
+    diesel::delete(access_tokens::table.filter(access_tokens::user_id.eq(cuser.id)))
+        .execute(&mut conn)?;
     if jwt_token.is_err() {
-        return context::render_internal_server_error_json_with_detail(res, "generate jwt token error");
+        return context::render_internal_server_error_json_with_detail(
+            res,
+            "generate jwt token error",
+        );
     }
     let jwt_token = jwt_token.unwrap();
     let new_token = NewAccessToken {
@@ -708,7 +792,9 @@ pub async fn update_password(req: &mut Request, depot: &mut Depot, res: &mut Res
     struct ResultData<'a> {
         jwt_token: &'a str,
     }
-    res.render(Json(ResultData { jwt_token: &jwt_token }));
+    res.render(Json(ResultData {
+        jwt_token: &jwt_token,
+    }));
     Ok(())
 }
 
@@ -717,12 +803,14 @@ pub async fn update(req: &mut Request, depot: &mut Depot, res: &mut Response) ->
     #[derive(AsChangeset, Deserialize, Debug)]
     #[diesel(table_name = users)]
     struct PostedData {
-        display_name: Option<String>
+        display_name: Option<String>,
     }
-    let pdata = parse_posted_data!(req, res, PostedData);
+    let pdata = req.parse_json::<PostedData>().await?;
     let cuser = current_user!(depot, res);
     let mut conn = db::connect()?;
-    let user = diesel::update(cuser).set(&pdata).get_result::<User>(&mut conn)?;
+    let user = diesel::update(cuser)
+        .set(&pdata)
+        .get_result::<User>(&mut conn)?;
     res.render(Json(user));
     Ok(())
 }

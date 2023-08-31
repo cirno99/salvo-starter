@@ -29,7 +29,11 @@ pub async fn delete(req: &mut Request, depot: &mut Depot, res: &mut Response) ->
     Ok(())
 }
 #[handler]
-pub async fn bulk_delete(req: &mut Request, depot: &mut Depot, res: &mut Response) -> AppResult<()> {
+pub async fn bulk_delete(
+    req: &mut Request,
+    depot: &mut Depot,
+    res: &mut Response,
+) -> AppResult<()> {
     let mut conn = db::connect()?;
     bulk_delete_records!(
         req,
@@ -69,7 +73,7 @@ pub async fn create(req: &mut Request, depot: &mut Depot, res: &mut Response) ->
         value: String,
         device: Option<String>,
     }
-    let pdata = parse_posted_data!(req, res, PostedData);
+    let pdata = req.parse_json::<PostedData>().await?;
     if pdata.name.is_empty() {
         return context::render_parse_param_error_json_with_detail(res, "name is not provider");
     }
@@ -80,7 +84,10 @@ pub async fn create(req: &mut Request, depot: &mut Depot, res: &mut Response) ->
     let exp = Utc::now() + Duration::days(7);
     let jwt_token = crate::create_jwt_token(cuser, &exp);
     if jwt_token.is_err() {
-        return context::render_internal_server_error_json_with_detail(res, "create jwt token error");
+        return context::render_internal_server_error_json_with_detail(
+            res,
+            "create jwt token error",
+        );
     }
     let jwt_token = jwt_token.unwrap();
     let mut conn = db::connect()?;
@@ -90,8 +97,8 @@ pub async fn create(req: &mut Request, depot: &mut Depot, res: &mut Response) ->
             .filter(access_tokens::name.eq(&pdata.name));
         if diesel_exists!(query, conn) {
             return Err(StatusError::conflict()
-                .with_summary("token conflict")
-                .with_detail("this name is already taken, please try another.")
+                .brief("token conflict")
+                .detail("this name is already taken, please try another.")
                 .into());
         }
         let token = NewAccessToken {
@@ -104,7 +111,9 @@ pub async fn create(req: &mut Request, depot: &mut Depot, res: &mut Response) ->
             updated_by: Some(cuser.id),
             created_by: Some(cuser.id),
         };
-        diesel::insert_into(access_tokens::table).values(&token).execute(conn)?;
+        diesel::insert_into(access_tokens::table)
+            .values(&token)
+            .execute(conn)?;
         let mut output = HashMap::new();
         output.insert("value", token.value);
         Ok(output)
@@ -124,15 +133,21 @@ pub async fn update(req: &mut Request, depot: &mut Depot, res: &mut Response) ->
         value: String,
         device: Option<String>,
     }
-    let pdata = parse_posted_data!(req, res, PostedData);
+    let pdata = req.parse_json::<PostedData>().await?;
     let cuser = current_user!(depot, res);
     let mut conn = db::connect()?;
     let exist_token = get_record_by_param!(req, res, AccessToken, access_tokens, &mut conn);
     if exist_token.user_id != cuser.id {
-        return context::render_parse_param_error_json_with_detail(res, "access token is not correct");
+        return context::render_parse_param_error_json_with_detail(
+            res,
+            "access token is not correct",
+        );
     }
     if pdata.name.is_empty() {
-        return context::render_parse_param_error_json_with_detail(res, "access token's name is not provide");
+        return context::render_parse_param_error_json_with_detail(
+            res,
+            "access token's name is not provide",
+        );
     }
     let token = conn.transaction::<AccessToken, crate::Error, _>(|conn| {
         let query = access_tokens::table
@@ -141,8 +156,8 @@ pub async fn update(req: &mut Request, depot: &mut Depot, res: &mut Response) ->
             .filter(access_tokens::name.eq(&pdata.name));
         if diesel_exists!(query, conn) {
             return Err(StatusError::conflict()
-                .with_summary("token conflict")
-                .with_detail("this name is already taken, please try another.")
+                .brief("token conflict")
+                .detail("this name is already taken, please try another.")
                 .into());
         }
         let token = diesel::update(&exist_token)

@@ -12,7 +12,7 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use textnonce::TextNonce;
 
-use crate::{AppResult};
+use crate::AppResult;
 
 pub async fn smart_upload_files(
     req: &mut Request,
@@ -70,7 +70,10 @@ pub async fn is_single_zip_file_upload(req: &mut Request, field: Option<&str>) -
     false
 }
 pub fn is_safe_dir_path(dir_path: &str) -> bool {
-    !dir_path.contains('.') && !dir_path.contains(':') && !dir_path.contains('\\') && !dir_path.starts_with('/')
+    !dir_path.contains('.')
+        && !dir_path.contains(':')
+        && !dir_path.contains('\\')
+        && !dir_path.starts_with('/')
 }
 #[derive(Serialize, Debug)]
 pub struct UploadedData {
@@ -83,7 +86,11 @@ pub struct UploadedFile {
     pub path: String,
     pub hash: Option<String>,
 }
-pub async fn upload_files(req: &mut Request, store_dir: impl AsRef<str>, unique: bool) -> AppResult<UploadedData> {
+pub async fn upload_files(
+    req: &mut Request,
+    store_dir: impl AsRef<str>,
+    unique: bool,
+) -> AppResult<UploadedData> {
     let store_dir = store_dir.as_ref();
     let form_data = match req.form_data().await {
         Ok(form_data) => form_data,
@@ -98,7 +105,11 @@ pub async fn upload_files(req: &mut Request, store_dir: impl AsRef<str>, unique:
     };
     for (_, values) in form_data.files.iter_all() {
         for value in values {
-            let oname = value.name().unwrap_or_default().trim_start_matches('/').to_owned();
+            let oname = value
+                .name()
+                .unwrap_or_default()
+                .trim_start_matches('/')
+                .to_owned();
             if oname.is_empty() {
                 continue;
             }
@@ -165,7 +176,8 @@ fn file_name_sanitized(file_name: &str) -> ::std::path::PathBuf {
         '/' => '\\',
         _ => '/',
     };
-    let filename = no_null_filename.replace(&opposite_separator.to_string(), &separator.to_string());
+    let filename =
+        no_null_filename.replace(&opposite_separator.to_string(), &separator.to_string());
 
     ::std::path::Path::new(&filename)
         .components()
@@ -175,7 +187,11 @@ fn file_name_sanitized(file_name: &str) -> ::std::path::PathBuf {
             path
         })
 }
-pub async fn unzip_file(src: impl AsRef<Path>, dest: impl AsRef<str>, unique: bool) -> AppResult<Vec<UploadedFile>> {
+pub async fn unzip_file(
+    src: impl AsRef<Path>,
+    dest: impl AsRef<str>,
+    unique: bool,
+) -> AppResult<Vec<UploadedFile>> {
     let file = fs::File::open(src.as_ref())?;
     let dest = dest.as_ref();
     let mut archive = zip::ZipArchive::new(file)?;
@@ -264,7 +280,11 @@ pub fn read_json<T: DeserializeOwned, P: AsRef<Path>>(path: P) -> AppResult<T> {
     Ok(serde_json::from_reader::<_, T>(reader)?)
 }
 
-pub fn write_json<P: AsRef<Path>, C: Serialize>(path: P, contents: C, pretty: bool) -> AppResult<()> {
+pub fn write_json<P: AsRef<Path>, C: Serialize>(
+    path: P,
+    contents: C,
+    pretty: bool,
+) -> AppResult<()> {
     std::fs::create_dir_all(get_parent_dir(path.as_ref()))?;
     if pretty {
         std::fs::write(path, serde_json::to_vec_pretty(&contents)?)?;
@@ -303,12 +323,14 @@ pub async fn send_local_file(
     attched_name: Option<&str>,
 ) {
     if attched_name.is_some() {
-        if let Err(e) = super::add_serve_file_content_disposition(res, key.as_ref(), None, attched_name) {
+        if let Err(e) =
+            super::add_serve_file_content_disposition(res, key.as_ref(), None, attched_name)
+        {
             tracing::error!("add_serve_file_content_disposition error: {}", e);
         }
     }
     let file_path = join_path!(crate::space_path(), key.as_ref());
     if Path::new(&file_path).exists() {
-        NamedFile::send_file(file_path, req_headers, res).await;
+        NamedFile::builder(file_path).send(req_headers, res).await;
     }
 }

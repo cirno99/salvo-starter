@@ -30,7 +30,7 @@ struct PostedLoginData {
 }
 #[handler]
 pub async fn login(req: &mut Request, _depot: &mut Depot, res: &mut Response) -> AppResult<()> {
-    let mut pdata = parse_posted_data!(req, res, PostedLoginData);
+    let mut pdata = req.parse_json::<PostedLoginData>().await?;
 
     if let Some(user) = pdata.user {
         if let Ok(()) = validator::validate_email(&user) {
@@ -102,7 +102,7 @@ pub async fn login(req: &mut Request, _depot: &mut Depot, res: &mut Response) ->
             res.render(Json(data));
             return Ok(());
         }
-        
+
         if user.is_disabled {
             data.error = Some(StatusInfo {
                 code: StatusCode::BAD_REQUEST.as_u16(),
@@ -114,7 +114,7 @@ pub async fn login(req: &mut Request, _depot: &mut Depot, res: &mut Response) ->
             res.render(Json(data));
             return Ok(());
         }
-        
+
         match create_token(&user, &mut conn) {
             Ok(jwt_token) => {
                 res.add_cookie(create_token_cookie(jwt_token.clone()));
@@ -189,13 +189,18 @@ pub async fn refresh_token(_req: &Request, depot: &mut Depot, res: &mut Response
 pub fn create_token(user: &User, conn: &mut PgConnection) -> Result<String, String> {
     let exp = Utc::now() + Duration::days(7);
     if let Ok(jwt_token) = crate::create_jwt_token(user, &exp) {
-        insert_token_to_db(user.id, &jwt_token, exp, conn).map_err(|_| "db error when insert token".to_owned())?;
+        insert_token_to_db(user.id, &jwt_token, exp, conn)
+            .map_err(|_| "db error when insert token".to_owned())?;
         Ok(jwt_token)
     } else {
         Err("create jwt token error".into())
     }
 }
-pub fn create_and_send_token(user: &User, res: &mut Response, conn: &mut PgConnection) -> AppResult<()> {
+pub fn create_and_send_token(
+    user: &User,
+    res: &mut Response,
+    conn: &mut PgConnection,
+) -> AppResult<()> {
     match create_token(user, conn) {
         Ok(jwt_token) => {
             #[derive(Serialize, Debug)]
