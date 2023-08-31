@@ -125,9 +125,11 @@ dependencies = [
  "mime",
  "mime_guess",
  "once_cell",
+ "openssl",
  "path-slash",
  "rand 0.8.5",
  "regex",
+ "ring",
  "salvo",
  "serde",
  "serde-aux",
@@ -1466,6 +1468,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ff011a302c396a5197692431fc1948019154afc178baf7d8e37367442a4601cf"
 
 [[package]]
+name = "openssl-src"
+version = "111.27.0+1.1.1v"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "06e8f197c82d7511c5b014030c9b1efeda40d7d5f99d23b4ceed3524a5e63f02"
+dependencies = [
+ "cc",
+]
+
+[[package]]
 name = "openssl-sys"
 version = "0.9.80"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1474,6 +1485,7 @@ dependencies = [
  "autocfg",
  "cc",
  "libc",
+ "openssl-src",
  "pkg-config",
  "vcpkg",
 ]
@@ -3228,8 +3240,3 @@ dependencies = [
  "libc",
  "pkg-config",
 ]
-
-[[patch.unused]]
-name = "quote"
-version = "1.0.23"
-source = "git+https://github.com/dtolnay/quote?rev=550af67#550af67f9e0be89897902031f153fb3d40360017"

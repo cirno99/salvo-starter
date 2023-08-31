@@ -1,7 +1,7 @@
+mod delete;
 pub mod pagination;
 pub mod permit_filter;
 pub mod url_filter;
-mod delete;
 
 pub use delete::*;
 pub use pagination::*;
@@ -33,6 +33,10 @@ pub fn build_pool(database_url: &str) -> Result<PgPool, PoolError> {
     let manager = ConnectionManager::<PgConnection>::new(database_url);
     diesel::r2d2::Pool::builder()
         .max_size(crate::database_conns())
+        .min_idle(Some(crate::database_conns() - 2))
+        .test_on_check_out(false)
+        .idle_timeout(None)
+        .max_lifetime(None)
         .build(manager)
 }
 

@@ -36,7 +36,6 @@ pub fn validate_email<T: AsRef<str>>(email: T) -> Result<(), String> {
     Ok(())
 }
 
-
 pub fn validate_ident_name<T: AsRef<str>>(username: T) -> Result<(), String> {
     let username = username.as_ref();
     if username.is_empty() {
@@ -97,7 +96,11 @@ pub fn validate_generic_name<T: AsRef<str>>(name: T) -> Result<(), String> {
     Ok(())
 }
 
-pub fn is_email_other_taken(user_id: Option<i64>, email: &str, conn: &mut PgConnection) -> AppResult<bool> {
+pub fn is_email_other_taken(
+    user_id: Option<i64>,
+    email: &str,
+    conn: &mut PgConnection,
+) -> AppResult<bool> {
     let taken = if let Some(user_id) = user_id {
         diesel_exists!(
             emails::table
@@ -114,11 +117,15 @@ pub fn is_email_other_taken(user_id: Option<i64>, email: &str, conn: &mut PgConn
     Ok(taken)
 }
 
-pub fn is_ident_name_other_taken(user_id: Option<i64>, ident_name: &str, conn: &mut PgConnection) -> AppResult<bool> {
+pub fn is_ident_name_other_taken(
+    user_id: Option<i64>,
+    ident_name: &str,
+    conn: &mut PgConnection,
+) -> AppResult<bool> {
     if let Some(user_id) = user_id {
         let query = users::table
-        .filter(lower(users::ident_name).eq(ident_name.to_lowercase()))
-        .filter(users::id.ne(user_id));
+            .filter(lower(users::ident_name).eq(ident_name.to_lowercase()))
+            .filter(users::id.ne(user_id));
         Ok(diesel_exists!(query, conn))
     } else {
         let query = users::table.filter(lower(users::ident_name).eq(ident_name.to_lowercase()));

@@ -9,6 +9,7 @@ edition = "2021"
 diesel = { version = "2.0.0", features = ["postgres", "r2d2", "serde_json", "chrono", "numeric"] }
 diesel_migrations = "2.0.0"
 dotenv = "0.15.0"
+ring = "0.16.20"
 salvo = { version = "0.53", features = ["jwt-auth", "proxy", "serve-static", "sse", "size-limiter"] }
 tokio = { version = "1.21.1", features = ["macros", "parking_lot", "process"] }
 once_cell = "1.15.0"
@@ -40,6 +41,19 @@ zip = "0.6.2"
 bcrypt = "0.15.0"
 rand = "0.8.3"
 lettre = "0.10"
+openssl = { version = "0.10", features = ["vendored"] }
 
-[patch.crates-io]
-quote = { git = 'https://github.com/dtolnay/quote', rev="550af67" }
+[profile.release]
+opt-level = "z"     # Optimize for size.
+lto = true          # Enable Link Time Optimization
+codegen-units = 1   # Reduce number of codegen units to increase optimizations.
+panic = "abort"     # Abort on panic
+strip = true        # Automatically strip symbols from the binary.
+
+[target.aarch64-unknown-linux-musl]
+linker = "aarch64-linux-gnu-gcc"
+rustflags = [ "-C", "target-feature=+crt-static", "-C", "link-arg=-lgcc" ]
+
+[target.aarch64-unknown-linux-gnu]
+linker = "aarch64-linux-gnu-gcc"
+rustflags = [ "-C", "target-feature=+crt-static", "-C", "link-arg=-lgcc" ]
